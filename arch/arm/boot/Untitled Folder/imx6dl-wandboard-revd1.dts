@@ -1,0 +1,113 @@
+/*
+ * Copyright 2013-2017 Freescale Semiconductor, Inc.
+ * Copyright 2017 Wandboard, Org.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *         Richard Hu <richard.hu@technexion.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ */
+
+/dts-v1/;
+#include "imx6dl.dtsi"
+#include "imx6qdl-wandboard-revd1.dtsi"
+
+/ {
+	model = "Wandboard i.MX6DL/SOLO rev D1";
+	compatible = "wand,imx6dl-wandboard", "fsl,imx6dl";
+
+	v4l2_cap_2 {
+		compatible = "fsl,imx6dl-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <0>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+
+	v4l2_cap_3 {
+		compatible = "fsl,imx6dl-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <1>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+};
+
+
+&i2c2 {
+	clock-frequency = <400000>;
+
+	tp2854_mipi: tp2854_mipi@44 {
+		compatible = "techpoint,tp2854_mipi";
+		reg = <0x44>;
+		clocks = <&clks 201>;
+		clock-names = "csi_mclk";
+		csi_id = <0>;
+		mclk = <27000000>;
+		mclk_source = <0>;
+	};
+};
+
+&mipi_csi {
+	status = "okay";
+	lanes = <4>;
+
+	mipi-csi2-channel@0 {
+		ipu_id = <0>;
+		csi_id = <0>;
+		v_channel = <0>;
+		status = "okay";
+	};
+
+	mipi-csi2-channel@1 {
+		ipu_id = <0>;
+		csi_id = <1>;
+		v_channel = <1>;
+		status = "okay";
+	};
+
+	mipi-csi2-channel@2 {
+		ipu_id = <1>;
+		csi_id = <0>;
+		v_channel = <2>;
+		status = "okay";
+	};
+
+	mipi-csi2-channel@3 {
+		ipu_id = <1>;
+		csi_id = <1>;
+		v_channel = <3>;
+		status = "okay";
+	};
+};
+
+&ldb {
+	lvds-channel@0 {
+		crtc = "ipu1-di0";
+	};
+};
+
+&mxcfb1 {
+	status = "okay";
+};
+
+&mxcfb2 {
+	status = "okay";
+};
+
+#if 0
+&mxcfb3 {
+	status = "okay";
+};
+
+&mxcfb4 {
+	status = "okay";
+};
+#endif
+
+&epdc {
+	status = "disabled";
+};

@@ -1,0 +1,2050 @@
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/adv7180.c b/drivers/media/platform/mxc/capture/adv7180.c
+index abd6159..2ab5043 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/adv7180.c
++++ b/drivers/media/platform/mxc/capture/adv7180.c
+@@ -1262,6 +1262,12 @@ static int adv7180_probe(struct i2c_client *client,
+ 		return ret;
+ 	}
+ 
++	ret = of_property_read_s32(dev->of_node, "ipu_id", 
++					&(adv7180_data.sen.ipu_id));
++	if (ret) {
++		adv7180_data.sen.ipu_id = 0;
++	}
++
+ 	ret = of_property_read_u32(dev->of_node, "csi_id",
+ 					&(adv7180_data.sen.csi));
+ 	if (ret) {
+diff --git a/arm/boot/dts/imx6dl-wandboard-revd1.dts b/arch/arm/boot/dts/imx6dl-wandboard-revd1.dts
+index 25eebb0..2683f45 100644
+--- a/arm/boot/dts/imx6dl-wandboard-revd1.dts
++++ b/arch/arm/boot/dts/imx6dl-wandboard-revd1.dts
+@@ -18,6 +18,70 @@
+ / {
+ 	model = "Wandboard i.MX6DL/SOLO rev D1";
+ 	compatible = "wand,imx6dl-wandboard", "fsl,imx6dl";
++
++	v4l2_cap_2 {
++		compatible = "fsl,imx6dl-v4l2-capture";
++		ipu_id = <1>;
++		csi_id = <0>;
++		mclk_source = <0>;
++		status = "okay";
++	};
++
++	v4l2_cap_3 {
++		compatible = "fsl,imx6dl-v4l2-capture";
++		ipu_id = <1>;
++		csi_id = <1>;
++		mclk_source = <0>;
++		status = "okay";
++	};
++};
++
++
++&i2c2 {
++	clock-frequency = <400000>;
++
++	tp2854_mipi: tp2854_mipi@44 {
++		compatible = "techpoint,tp2854_mipi";
++		reg = <0x44>;
++		clocks = <&clks 201>;
++		clock-names = "csi_mclk";
++		csi_id = <0>;
++		mclk = <27000000>;
++		mclk_source = <0>;
++	};
++};
++
++&mipi_csi {
++	status = "okay";
++	lanes = <4>;
++
++	mipi-csi2-channel@0 {
++		ipu_id = <0>;
++		csi_id = <0>;
++		v_channel = <0>;
++		status = "okay";
++	};
++
++	mipi-csi2-channel@1 {
++		ipu_id = <0>;
++		csi_id = <1>;
++		v_channel = <1>;
++		status = "okay";
++	};
++
++	mipi-csi2-channel@2 {
++		ipu_id = <1>;
++		csi_id = <0>;
++		v_channel = <2>;
++		status = "okay";
++	};
++
++	mipi-csi2-channel@3 {
++		ipu_id = <1>;
++		csi_id = <1>;
++		v_channel = <3>;
++		status = "okay";
++	};
+ };
+ 
+ &ldb {
+diff --git a/arm/boot/dts/imx6qdl-wandboard-revd1.dtsi b/arch/arm/boot/dts/imx6qdl-wandboard-revd1.dtsi
+index f08a464..2a23f99 100644
+--- a/arm/boot/dts/imx6qdl-wandboard-revd1.dtsi
++++ b/arch/arm/boot/dts/imx6qdl-wandboard-revd1.dtsi
+@@ -249,6 +249,14 @@
+ 		status = "okay";
+ 	};
+ 
++	v4l2_cap_1 {
++		compatible = "fsl,imx6q-v4l2-capture";
++		ipu_id = <0>;
++		csi_id = <1>;
++		mclk_source = <0>;
++		status = "okay";
++	};
++
+ 	v4l2_out {
+ 		compatible = "fsl,mxc_v4l2_output";
+ 		status = "okay";
+@@ -746,11 +754,15 @@
+ };
+ 
+ &mipi_csi {
+-	ipu_id = <0>;
+-	csi_id = <0>;
+-	v_channel = <0>;
+-	lanes = <2>;
++	lanes = <4>;
+ 	status = "okay";
++
++	mipi-csi2-channel@0 {
++		ipu_id = <0>;
++		csi_id = <0>;
++		v_channel = <0>;
++		status = "okay";
++	};
+ };
+ 
+ &pwm3 {
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_bg_overlay_sdc.c b/drivers/media/platform/mxc/capture/ipu_bg_overlay_sdc.c
+index 193cbd5..bc687d9 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_bg_overlay_sdc.c
++++ b/drivers/media/platform/mxc/capture/ipu_bg_overlay_sdc.c
+@@ -171,17 +171,16 @@ static int csi_enc_setup(cam_data *cam)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				params.csi_mem.mipi_en = true;
+-				params.csi_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				params.csi_mem.mipi_vc = cam->mipi_v_channel;
+ 				params.csi_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -405,9 +404,9 @@ static int bg_overlay_stop(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/mxc/ipu3/ipu_common.c b/drivers/mxc/ipu3/ipu_common.c
+index c5b82f7..040a9e0 100644
+--- a/wandboard_imx_4.9/drivers/mxc/ipu3/ipu_common.c
++++ b/drivers/mxc/ipu3/ipu_common.c
+@@ -795,9 +795,8 @@ int32_t ipu_init_channel(struct ipu_soc *ipu, ipu_channel_t channel, ipu_channel
+ 		if (params->csi_mem.mipi_en) {
+ 			ipu_conf |= (1 << (IPU_CONF_CSI0_DATA_SOURCE_OFFSET +
+ 				params->csi_mem.csi));
+-			_ipu_smfc_init(ipu, channel, params->csi_mem.mipi_vc,
+-				params->csi_mem.csi);
+-			_ipu_csi_set_mipi_di(ipu, params->csi_mem.mipi_vc,
++			_ipu_smfc_init(ipu, channel, 0, params->csi_mem.csi);
++			_ipu_csi_set_mipi_di(ipu, 0,
+ 				params->csi_mem.mipi_id, params->csi_mem.csi);
+ 		} else {
+ 			ipu_conf &= ~(1 << (IPU_CONF_CSI0_DATA_SOURCE_OFFSET +
+@@ -826,8 +825,7 @@ int32_t ipu_init_channel(struct ipu_soc *ipu, ipu_channel_t channel, ipu_channel
+ 		if (params->csi_prp_enc_mem.mipi_en) {
+ 			ipu_conf |= (1 << (IPU_CONF_CSI0_DATA_SOURCE_OFFSET +
+ 				params->csi_prp_enc_mem.csi));
+-			_ipu_csi_set_mipi_di(ipu,
+-				params->csi_prp_enc_mem.mipi_vc,
++			_ipu_csi_set_mipi_di(ipu, 0,
+ 				params->csi_prp_enc_mem.mipi_id,
+ 				params->csi_prp_enc_mem.csi);
+ 		} else
+@@ -867,8 +865,7 @@ int32_t ipu_init_channel(struct ipu_soc *ipu, ipu_channel_t channel, ipu_channel
+ 		if (params->csi_prp_vf_mem.mipi_en) {
+ 			ipu_conf |= (1 << (IPU_CONF_CSI0_DATA_SOURCE_OFFSET +
+ 				params->csi_prp_vf_mem.csi));
+-			_ipu_csi_set_mipi_di(ipu,
+-				params->csi_prp_vf_mem.mipi_vc,
++			_ipu_csi_set_mipi_di(ipu, 0,
+ 				params->csi_prp_vf_mem.mipi_id,
+ 				params->csi_prp_vf_mem.csi);
+ 		} else
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_csi_enc.c b/drivers/media/platform/mxc/capture/ipu_csi_enc.c
+index 3a824a9..fadc85c 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_csi_enc.c
++++ b/drivers/media/platform/mxc/capture/ipu_csi_enc.c
+@@ -135,17 +135,16 @@ static int csi_enc_setup(cam_data *cam)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				params.csi_mem.mipi_en = true;
+-				params.csi_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				params.csi_mem.mipi_vc = cam->mipi_v_channel;
+ 				params.csi_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -307,9 +306,9 @@ static int csi_enc_disabling_tasks(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_fg_overlay_sdc.c b/drivers/media/platform/mxc/capture/ipu_fg_overlay_sdc.c
+index 4d6b136..135b708 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_fg_overlay_sdc.c
++++ b/drivers/media/platform/mxc/capture/ipu_fg_overlay_sdc.c
+@@ -177,17 +177,16 @@ static int csi_enc_setup(cam_data *cam)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				params.csi_mem.mipi_en = true;
+-				params.csi_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				params.csi_mem.mipi_vc = cam->mipi_v_channel;
+ 				params.csi_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -500,9 +499,9 @@ static int foreground_stop(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_enc.c b/drivers/media/platform/mxc/capture/ipu_prp_enc.c
+index 1e4420b..f61ff62 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_enc.c
++++ b/drivers/media/platform/mxc/capture/ipu_prp_enc.c
+@@ -138,17 +138,16 @@ static int prp_enc_setup(cam_data *cam)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				enc.csi_prp_enc_mem.mipi_en = true;
+-				enc.csi_prp_enc_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				enc.csi_prp_enc_mem.mipi_vc = cam->mipi_v_channel;
+ 				enc.csi_prp_enc_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -461,9 +460,9 @@ static int prp_enc_disabling_tasks(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc_bg.c b/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc_bg.c
+index a24d82d..b32f44d 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc_bg.c
++++ b/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc_bg.c
+@@ -158,17 +158,16 @@ static int prpvf_start(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				vf.csi_prp_vf_mem.mipi_en = true;
+-				vf.csi_prp_vf_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				vf.csi_prp_vf_mem.mipi_vc = cam->mipi_v_channel;
+ 				vf.csi_prp_vf_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -375,9 +374,9 @@ static int prpvf_stop(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc.c b/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc.c
+index b9610f1..5e97f62 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc.c
++++ b/drivers/media/platform/mxc/capture/ipu_prp_vf_sdc.c
+@@ -173,17 +173,16 @@ static int prpvf_start(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id) {
+ 				vf.csi_prp_vf_mem.mipi_en = true;
+-				vf.csi_prp_vf_mem.mipi_vc =
+-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
++				vf.csi_prp_vf_mem.mipi_vc = cam->mipi_v_channel;
+ 				vf.csi_prp_vf_mem.mipi_id =
+-				mipi_csi2_get_datatype(mipi_csi2_info);
++				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
+ 			} else {
+@@ -446,9 +445,9 @@ static int prpvf_stop(void *private)
+ 	mipi_csi2_info = mipi_csi2_get_info();
+ 
+ 	if (mipi_csi2_info) {
+-		if (mipi_csi2_get_status(mipi_csi2_info)) {
+-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
+-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
++		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
++			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
++			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
+ 
+ 			if (cam->ipu == ipu_get_soc(ipu_id)
+ 				&& cam->csi == csi_id)
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_still.c b/drivers/media/platform/mxc/capture/ipu_still.c
+index b18c3cf..0e7a1c0 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ipu_still.c
++++ b/drivers/media/platform/mxc/capture/ipu_still.c
+@@ -47,10 +47,21 @@ static int callback_flag;
+ static irqreturn_t prp_csi_eof_callback(int irq, void *dev_id)
+ {
+ 	cam_data *cam = devid;
+-	ipu_select_buffer(cam->ipu, CSI_MEM, IPU_OUTPUT_BUFFER,
++	ipu_channel_t csi_channel;
++
++#ifdef CONFIG_MXC_IPU_V1
++	csi_channel = CSI_MEM;
++#else
++	if(cam->csi == 1)
++		csi_channel = CSI_MEM1;
++	else
++		csi_channel = CSI_MEM0;
++#endif
++
++	ipu_select_buffer(cam->ipu, csi_channel, IPU_OUTPUT_BUFFER,
+ 			  callback_flag%2 ? 1 : 0);
+ 	if (callback_flag == 0)
+-		ipu_enable_channel(cam->ipu, CSI_MEM);
++		ipu_enable_channel(cam->ipu, csi_channel);
+ 
+ 	callback_flag++;
+ 	return IRQ_HANDLED;
+@@ -68,12 +79,20 @@ static irqreturn_t prp_csi_eof_callback(int irq, void *dev_id)
+ static irqreturn_t prp_still_callback(int irq, void *dev_id)
+ {
+ 	cam_data *cam = (cam_data *) dev_id;
++#ifndef CONFIG_MXC_IPU_V1
++	ipu_channel_t csi_channel;
++
++	if (cam->csi == 1)
++		csi_channel = CSI_MEM1;
++	else
++		csi_channel = CSI_MEM0;
++#endif
+ 
+ 	callback_eof_flag++;
+ 	if (callback_eof_flag < 5) {
+ #ifndef CONFIG_MXC_IPU_V1
+ 		buffer_num = (buffer_num == 0) ? 1 : 0;
+-		ipu_select_buffer(cam->ipu, CSI_MEM,
++		ipu_select_buffer(cam->ipu, csi_channel,
+ 				  IPU_OUTPUT_BUFFER, buffer_num);
+ #endif
+ 	} else {
+@@ -96,6 +115,21 @@ static int prp_still_start(void *private)
+ 	u32 pixel_fmt;
+ 	int err;
+ 	ipu_channel_params_t params;
++	ipu_channel_t csi_channel;
++
++#ifdef CONFIG_MXC_IPU_V1
++	csi_channel = CSI_MEM;
++#else
++	uint32_t irq;
++
++	if (cam->csi == 1) {
++		csi_channel = CSI_MEM1;
++		irq = IPU_IRQ_CSI1_OUT_EOF;
++	} else {
++		csi_channel = CSI_MEM0;
++		irq = IPU_IRQ_CSI0_OUT_EOF;
++	}
++#endif
+ 
+ 	if (cam->v2f.fmt.pix.pixelformat == V4L2_PIX_FMT_YUV420)
+ 		pixel_fmt = IPU_PIX_FMT_YUV420P;
+@@ -123,11 +157,11 @@ static int prp_still_start(void *private)
+ 	}
+ 
+ 	memset(&params, 0, sizeof(params));
+-	err = ipu_init_channel(cam->ipu, CSI_MEM, &params);
++	err = ipu_init_channel(cam->ipu, csi_channel, &params);
+ 	if (err != 0)
+ 		return err;
+ 
+-	err = ipu_init_channel_buffer(cam->ipu, CSI_MEM, IPU_OUTPUT_BUFFER,
++	err = ipu_init_channel_buffer(cam->ipu, csi_channel, IPU_OUTPUT_BUFFER,
+ 				      pixel_fmt, cam->v2f.fmt.pix.width,
+ 				      cam->v2f.fmt.pix.height,
+ 				      cam->v2f.fmt.pix.width, IPU_ROTATE_NONE,
+@@ -157,8 +191,8 @@ static int prp_still_start(void *private)
+ 	callback_eof_flag = 0;
+ 	buffer_num = 0;
+ 
+-	ipu_clear_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF);
+-	err = ipu_request_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF,
++	ipu_clear_irq(cam->ipu, irq);
++	err = ipu_request_irq(cam->ipu, irq,
+ 			      prp_still_callback,
+ 			      0, "Mxc Camera", cam);
+ 	if (err != 0) {
+@@ -166,8 +200,8 @@ static int prp_still_start(void *private)
+ 		return err;
+ 	}
+ 
+-	ipu_select_buffer(cam->ipu, CSI_MEM, IPU_OUTPUT_BUFFER, 0);
+-	ipu_enable_channel(cam->ipu, CSI_MEM);
++	ipu_select_buffer(cam->ipu, csi_channel, IPU_OUTPUT_BUFFER, 0);
++	ipu_enable_channel(cam->ipu, csi_channel);
+ 	ipu_enable_csi(cam->ipu, cam->csi);
+ #endif
+ 
+@@ -184,17 +218,29 @@ static int prp_still_stop(void *private)
+ {
+ 	cam_data *cam = (cam_data *) private;
+ 	int err = 0;
+-
++	ipu_channel_t csi_channel;
+ #ifdef CONFIG_MXC_IPU_V1
++	csi_channel = CSI_MEM;
++
+ 	ipu_free_irq(IPU_IRQ_SENSOR_EOF, NULL);
+ 	ipu_free_irq(IPU_IRQ_SENSOR_OUT_EOF, cam);
+ #else
+-	ipu_free_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF, cam);
++	uint32_t irq;
++
++	if(cam->csi == 1) {
++		csi_channel = CSI_MEM1;
++		irq = IPU_IRQ_CSI1_OUT_EOF;
++	} else {
++		csi_channel = CSI_MEM0;
++		irq = IPU_IRQ_CSI0_OUT_EOF;
++	}
++
++	ipu_free_irq(cam->ipu, irq, cam);
+ #endif
+ 
+ 	ipu_disable_csi(cam->ipu, cam->csi);
+-	ipu_disable_channel(cam->ipu, CSI_MEM, true);
+-	ipu_uninit_channel(cam->ipu, CSI_MEM);
++	ipu_disable_channel(cam->ipu, csi_channel, true);
++	ipu_uninit_channel(cam->ipu, csi_channel);
+ 
+ 	return err;
+ }
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/Kconfig b/drivers/media/platform/mxc/capture/Kconfig
+index c792ae5..a4788a9 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/Kconfig
++++ b/drivers/media/platform/mxc/capture/Kconfig
+@@ -39,6 +39,12 @@ config MXC_TVIN_ADV7180
+ 	---help---
+ 	  If you plan to use the adv7180 video decoder with your MXC system, say Y here.
+ 
++config MXC_HD_CVBS_TP2854
++        tristate "Techpoint tp2854 HD CVBS Input support"
++        depends on !VIDEO_MXC_EMMA_CAMERA && I2C
++        ---help---
++          If you plan to use the tp2854 HD CVBS encoder with your MXC system, say Y here.
++
+ choice
+ 	prompt "Select Overlay Rounting"
+ 	default MXC_IPU_DEVICE_QUEUE_SDC
+diff --git a/arm/mach-imx/mach-imx6q.c b/arch/arm/mach-imx/mach-imx6q.c
+index 7b2462f..714fa51 100644
+--- a/arm/mach-imx/mach-imx6q.c
++++ b/arch/arm/mach-imx/mach-imx6q.c
+@@ -248,13 +248,19 @@ static void __init imx6q_csi_mux_init(void)
+ 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
+ 	if (!IS_ERR(gpr)) {
+ 		if (of_machine_is_compatible("fsl,imx6q-sabresd") ||
+-			of_machine_is_compatible("fsl,imx6q-sabreauto") ||
+-			of_machine_is_compatible("fsl,imx6qp-sabresd") ||
+-			of_machine_is_compatible("fsl,imx6qp-sabreauto"))
+-			regmap_update_bits(gpr, IOMUXC_GPR1, 1 << 19, 1 << 19);
+-		else if (of_machine_is_compatible("fsl,imx6dl-sabresd") ||
+-			 of_machine_is_compatible("fsl,imx6dl-sabreauto"))
++			of_machine_is_compatible("fsl,imx6qp-sabresd")) {
++			regmap_update_bits(gpr, IOMUXC_GPR1, 3 << 19, 1 << 19);
++		}
++		else if (of_machine_is_compatible("fsl,imx6q-sabreauto") ||
++				 of_machine_is_compatible("fsl,imx6qp-sabreauto")) {
++			regmap_update_bits(gpr, IOMUXC_GPR1, 3 << 19, 0 << 19);
++		} 
++		else if (of_machine_is_compatible("fsl,imx6dl-sabresd")) {
++			regmap_update_bits(gpr, IOMUXC_GPR13, 0x3F, 0x1C);
++		} 
++		else if (of_machine_is_compatible("fsl,imx6dl-sabreauto")) {
+ 			regmap_update_bits(gpr, IOMUXC_GPR13, 0x3F, 0x0C);
++		}
+ 	} else {
+ 		pr_err("%s(): failed to find fsl,imx6q-iomux-gpr regmap\n",
+ 		       __func__);
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/Makefile b/drivers/media/platform/mxc/capture/Makefile
+index 36ee8df..fa3d277 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/Makefile
++++ b/drivers/media/platform/mxc/capture/Makefile
+@@ -21,4 +21,7 @@ obj-$(CONFIG_MXC_CAMERA_OV5645_MIPI) += ov5645_camera_mipi_int.o
+ adv7180_tvin-objs := adv7180.o
+ obj-$(CONFIG_MXC_TVIN_ADV7180) += adv7180_tvin.o
+ 
++tp2854_hd_cvbs-objs := tp2854_mipi.o
++obj-$(CONFIG_MXC_HD_CVBS_TP2854) += tp2854_hd_cvbs.o
++
+ obj-$(CONFIG_VIDEO_V4L2_MXC_INT_DEVICE) += v4l2-int-device.o
+diff --git a/wandboard_imx_4.9/include/linux/mipi_csi2.h b/include/linux/mipi_csi2.h
+index 7dc76fd..6f2ecf7 100644
+--- a/wandboard_imx_4.9/include/linux/mipi_csi2.h
++++ b/include/linux/mipi_csi2.h
+@@ -65,18 +65,16 @@ bool mipi_csi2_disable(struct mipi_csi2_info *info);
+ 
+ bool mipi_csi2_get_status(struct mipi_csi2_info *info);
+ 
+-int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info);
++int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info, unsigned int v_channel);
+ 
+-unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info);
+-
+-unsigned int mipi_csi2_get_virtual_channel(struct mipi_csi2_info *info);
++unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info, unsigned int v_channel);
+ 
+ unsigned int mipi_csi2_set_lanes(struct mipi_csi2_info *info);
+ 
+ unsigned int mipi_csi2_set_datatype(struct mipi_csi2_info *info,
+-					unsigned int datatype);
++				unsigned int v_channel, unsigned int datatype);
+ 
+-unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info);
++unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info, unsigned int v_channel);
+ 
+ unsigned int mipi_csi2_dphy_status(struct mipi_csi2_info *info);
+ 
+@@ -88,6 +86,6 @@ int mipi_csi2_pixelclk_enable(struct mipi_csi2_info *info);
+ 
+ void mipi_csi2_pixelclk_disable(struct mipi_csi2_info *info);
+ 
+-int mipi_csi2_reset(struct mipi_csi2_info *info);
++int mipi_csi2_reset(struct mipi_csi2_info *info, int mipi_lane_bps);
+ 
+ #endif
+diff --git a/wandboard_imx_4.9/drivers/mxc/mipi/mxc_mipi_csi2.h b/drivers/mxc/mipi/mxc_mipi_csi2.h
+index 291d7e8..808654f 100644
+--- a/wandboard_imx_4.9/drivers/mxc/mipi/mxc_mipi_csi2.h
++++ b/drivers/mxc/mipi/mxc_mipi_csi2.h
+@@ -25,15 +25,19 @@
+ #else
+ #define mipi_dbg(fmt, ...)
+ #endif
++#define MAX_VIRTUAL_CHAN_NUM	4
++
++struct mipi_csi2_chan {
++	int		ipu_id;
++	unsigned int	csi_id;
++	unsigned int	datatype;
++};
+ 
+ /* driver private data */
+ struct mipi_csi2_info {
+ 	bool		mipi_en;
+-	int		ipu_id;
+-	unsigned int	csi_id;
+-	unsigned int	v_channel;
+ 	unsigned int	lanes;
+-	unsigned int	datatype;
++	struct mipi_csi2_chan mipi_chan[MAX_VIRTUAL_CHAN_NUM];
+ 	struct clk	*cfg_clk;
+ 	struct clk	*dphy_clk;
+ 	struct clk	*pixel_clk;
+diff --git a/wandboard_imx_4.9/drivers/mxc/mipi/mxc_mipi_csi2.c b/drivers/mxc/mipi/mxc_mipi_csi2.c
+index df45c36..2ab7045 100644
+--- a/wandboard_imx_4.9/drivers/mxc/mipi/mxc_mipi_csi2.c
++++ b/drivers/mxc/mipi/mxc_mipi_csi2.c
+@@ -161,13 +161,16 @@ EXPORT_SYMBOL(mipi_csi2_set_lanes);
+  * @return      Returns setted value
+  */
+ unsigned int mipi_csi2_set_datatype(struct mipi_csi2_info *info,
+-					unsigned int datatype)
++					unsigned int v_channel, unsigned int datatype)
+ {
+ 	unsigned int dtype;
+ 
++	if (v_channel >= MAX_VIRTUAL_CHAN_NUM)
++		return 0;
++
+ 	_mipi_csi2_lock(info);
+-	info->datatype = datatype;
+-	dtype = info->datatype;
++	info->mipi_chan[v_channel].datatype = datatype;
++	dtype = info->mipi_chan[v_channel].datatype;
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return dtype;
+@@ -180,12 +183,16 @@ EXPORT_SYMBOL(mipi_csi2_set_datatype);
+  * @param	info		mipi csi2 hander
+  * @return      Returns mipi data type
+  */
+-unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info)
++unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info,
++					unsigned int v_channel)
+ {
+ 	unsigned int dtype;
+ 
++	if (v_channel >= MAX_VIRTUAL_CHAN_NUM)
++		return 0;
++
+ 	_mipi_csi2_lock(info);
+-	dtype = info->datatype;
++	dtype = info->mipi_chan[v_channel].datatype;
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return dtype;
+@@ -276,8 +283,11 @@ EXPORT_SYMBOL(mipi_csi2_pixelclk_disable);
+  * @param	info		mipi csi2 hander
+  * @return      Returns 0 on success or negative error code on fail
+  */
+-int mipi_csi2_reset(struct mipi_csi2_info *info)
++int mipi_csi2_reset(struct mipi_csi2_info *info, int mipi_lane_bps)
+ {
++	int value;
++
++	dev_info(&info->pdev->dev, "mipi_csi2_reset: mipi_lane_bps = %d Mbps\n", mipi_lane_bps);
+ 	_mipi_csi2_lock(info);
+ 
+ 	mipi_csi2_write(info, 0x0, MIPI_CSI2_PHY_SHUTDOWNZ);
+@@ -290,7 +300,67 @@ int mipi_csi2_reset(struct mipi_csi2_info *info)
+ 	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
+ 	mipi_csi2_write(info, 0x00010044, MIPI_CSI2_PHY_TST_CTRL1);
+ 	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00000014, MIPI_CSI2_PHY_TST_CTRL1);
++	if (mipi_lane_bps < 90)
++		value = 0x00;
++	else if (mipi_lane_bps < 100)
++		value = 0x20;
++	else if (mipi_lane_bps < 110)
++		value = 0x40;
++	else if (mipi_lane_bps < 125)
++		value = 0x02;
++	else if (mipi_lane_bps < 140)
++		value = 0x22;
++	else if (mipi_lane_bps < 150)
++		value = 0x42;
++	else if (mipi_lane_bps < 160)
++		value = 0x04;
++	else if (mipi_lane_bps < 180)
++		value = 0x24;
++	else if (mipi_lane_bps < 200)
++		value = 0x44;
++	else if (mipi_lane_bps < 210)
++		value = 0x06;
++	else if (mipi_lane_bps < 240)
++		value = 0x26;
++	else if (mipi_lane_bps < 250)
++		value = 0x46;
++	else if (mipi_lane_bps < 270)
++		value = 0x08;
++	else if (mipi_lane_bps < 300)
++		value = 0x28;
++	else if (mipi_lane_bps < 330)
++		value = 0x48;
++	else if (mipi_lane_bps < 360)
++		value = 0x2a;
++	else if (mipi_lane_bps < 400)
++		value = 0x4a;
++	else if (mipi_lane_bps < 450)
++		value = 0x0c;
++	else if (mipi_lane_bps < 500)
++		value = 0x2c;
++	else if (mipi_lane_bps < 550)
++		value = 0x0e;
++	else if (mipi_lane_bps < 600)
++		value = 0x2e;
++	else if (mipi_lane_bps < 650)
++		value = 0x10;
++	else if (mipi_lane_bps < 700)
++		value = 0x30;
++	else if (mipi_lane_bps < 750)
++		value = 0x12;
++	else if (mipi_lane_bps < 800)
++		value = 0x32;
++	else if (mipi_lane_bps < 850)
++		value = 0x14;
++	else if (mipi_lane_bps < 900)
++		value = 0x34;
++	else if (mipi_lane_bps < 950)
++		value = 0x54;
++	else
++		value = 0x74;
++	dev_info(&info->pdev->dev, "mipi_csi2_reset: value = 0x%x.\n", value);
++
++	mipi_csi2_write(info, value, MIPI_CSI2_PHY_TST_CTRL1);
+ 	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
+ 	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
+ 
+@@ -320,12 +390,12 @@ EXPORT_SYMBOL(mipi_csi2_get_info);
+  *
+  * @return      Returns mipi csi2 bind ipu num
+  */
+-int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info)
++int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info, unsigned int v_channel)
+ {
+ 	int ipu_id;
+ 
+ 	_mipi_csi2_lock(info);
+-	ipu_id = info->ipu_id;
++	ipu_id = info->mipi_chan[v_channel].ipu_id;
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return ipu_id;
+@@ -337,35 +407,18 @@ EXPORT_SYMBOL(mipi_csi2_get_bind_ipu);
+  *
+  * @return      Returns mipi csi2 bind csi num
+  */
+-unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info)
++unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info, unsigned int v_channel)
+ {
+ 	unsigned int csi_id;
+ 
+ 	_mipi_csi2_lock(info);
+-	csi_id = info->csi_id;
++	csi_id = info->mipi_chan[v_channel].csi_id;
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return csi_id;
+ }
+ EXPORT_SYMBOL(mipi_csi2_get_bind_csi);
+ 
+-/*!
+- * This function is called to get mipi csi2 virtual channel.
+- *
+- * @return      Returns mipi csi2 virtual channel num
+- */
+-unsigned int mipi_csi2_get_virtual_channel(struct mipi_csi2_info *info)
+-{
+-	unsigned int v_channel;
+-
+-	_mipi_csi2_lock(info);
+-	v_channel = info->v_channel;
+-	_mipi_csi2_unlock(info);
+-
+-	return v_channel;
+-}
+-EXPORT_SYMBOL(mipi_csi2_get_virtual_channel);
+-
+ /**
+  * This function is called by the driver framework to initialize the MIPI CSI2
+  * device.
+@@ -378,10 +431,10 @@ EXPORT_SYMBOL(mipi_csi2_get_virtual_channel);
+ static int mipi_csi2_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+-	struct device_node *np = pdev->dev.of_node;
++	struct device_node *np = pdev->dev.of_node, *child;
+ 	struct resource *res;
+ 	u32 mipi_csi2_dphy_ver;
+-	int ret;
++	int ret, v_channel;
+ 
+ 	gmipi_csi2 = kmalloc(sizeof(struct mipi_csi2_info), GFP_KERNEL);
+ 	if (!gmipi_csi2) {
+@@ -389,38 +442,59 @@ static int mipi_csi2_probe(struct platform_device *pdev)
+ 		goto alloc_failed;
+ 	}
+ 
+-	ret = of_property_read_u32(np, "ipu_id", &(gmipi_csi2->ipu_id));
+-	if (ret) {
+-		dev_err(&pdev->dev, "ipu_id missing or invalid\n");
+-		goto err;
+-	}
+-
+-	ret = of_property_read_u32(np, "csi_id", &(gmipi_csi2->csi_id));
+-	if (ret) {
+-		dev_err(&pdev->dev, "csi_id missing or invalid\n");
+-		goto err;
+-	}
+-
+-	ret = of_property_read_u32(np, "v_channel", &(gmipi_csi2->v_channel));
+-	if (ret) {
+-		dev_err(&pdev->dev, "v_channel missing or invalid\n");
+-		goto err;
+-	}
+-
+ 	ret = of_property_read_u32(np, "lanes", &(gmipi_csi2->lanes));
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "lanes missing or invalid\n");
+ 		goto err;
+ 	}
+ 
+-	if ((gmipi_csi2->ipu_id < 0) || (gmipi_csi2->ipu_id > 1) ||
+-		(gmipi_csi2->csi_id > 1) || (gmipi_csi2->v_channel > 3) ||
+-		(gmipi_csi2->lanes > 4)) {
++	if (gmipi_csi2->lanes > 4) {
+ 		dev_err(&pdev->dev, "invalid param for mipi csi2!\n");
+ 		ret = -EINVAL;
+ 		goto err;
+ 	}
+ 
++	for_each_child_of_node(np, child) {
++		struct mipi_csi2_chan *chan;
++
++		if (!of_device_is_available(child))
++			continue;
++
++		ret = of_property_read_u32(child, "v_channel", &v_channel);
++		if (ret) {
++			dev_err(&pdev->dev, "v_channel missing\n");
++			goto err;
++		}
++
++		if (v_channel > 3) {
++			dev_err(&pdev->dev, "v_channel invalid\n");
++			ret = -EINVAL;
++			goto err;
++		}
++
++		chan = &(gmipi_csi2->mipi_chan[v_channel]);
++
++		ret = of_property_read_u32(child, "ipu_id", &(gmipi_csi2->mipi_chan[v_channel].ipu_id));
++		if (ret) {
++			dev_err(&pdev->dev, "ipu_id missing or invalid\n");
++			goto err;
++		}
++
++		ret = of_property_read_u32(child, "csi_id", &(gmipi_csi2->mipi_chan[v_channel].csi_id));
++		if (ret) {
++			dev_err(&pdev->dev, "csi_id missing or invalid\n");
++			goto err;
++		}
++
++		if ((gmipi_csi2->mipi_chan[v_channel].ipu_id < 0) ||
++			(gmipi_csi2->mipi_chan[v_channel].ipu_id > 1) ||
++			(gmipi_csi2->mipi_chan[v_channel].csi_id > 1)) {
++			dev_err(&pdev->dev, "invalid param for mipi csi2!\n");
++			ret = -EINVAL;
++			goto err;
++		}
++	}
++
+ 	/* initialize mutex */
+ 	mutex_init(&gmipi_csi2->mutex_lock);
+ 
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/mxc_v4l2_capture.h b/drivers/media/platform/mxc/capture/mxc_v4l2_capture.h
+index f671775..1d28be3 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/mxc_v4l2_capture.h
++++ b/drivers/media/platform/mxc/capture/mxc_v4l2_capture.h
+@@ -207,6 +207,8 @@ typedef struct _cam_data {
+ 	wait_queue_head_t power_queue;
+ 	unsigned int ipu_id;
+ 	unsigned int csi;
++	unsigned int mipi_v_channel;
++	bool is_mipi_cam;
+ 	u8 mclk_source;
+ 	bool mclk_on[2];	/* two mclk sources at most now */
+ 	int current_input;
+@@ -253,8 +255,11 @@ struct sensor_data {
+ 	u32 mclk;
+ 	u8 mclk_source;
+ 	struct clk *sensor_clk;
++	int ipu_id;
+ 	int csi;
+-
++	int v_channel;
++	bool is_mipi;
++	
+ 	void (*io_init)(void);
+ };
+ 
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/mxc_v4l2_capture.c b/drivers/media/platform/mxc/capture/mxc_v4l2_capture.c
+index 3d7adec..61cb796 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/mxc_v4l2_capture.c
++++ b/drivers/media/platform/mxc/capture/mxc_v4l2_capture.c
+@@ -349,7 +349,7 @@ static int mxc_v4l2_prepare_bufs(cam_data *cam, struct v4l2_buffer *buf)
+ 	pr_debug("In MVC:mxc_v4l2_prepare_bufs\n");
+ 
+ 	if (buf->index < 0 || buf->index >= FRAME_NUM || buf->length <
+-			PAGE_ALIGN(cam->v2f.fmt.pix.sizeimage)) {
++			cam->v2f.fmt.pix.sizeimage) {
+ 		pr_err("ERROR: v4l2 capture: mxc_v4l2_prepare_bufs buffers "
+ 			"not allocated,index=%d, length=%d\n", buf->index,
+ 			buf->length);
+@@ -2746,7 +2746,10 @@ static int init_camera_struct(cam_data *cam, struct platform_device *pdev)
+ 
+ 	cam->self = kmalloc(sizeof(struct v4l2_int_device), GFP_KERNEL);
+ 	cam->self->module = THIS_MODULE;
+-	sprintf(cam->self->name, "mxc_v4l2_cap%d", cam->csi);
++	if (cam->ipu_id == 0)
++		sprintf(cam->self->name, "mxc_v4l2_cap%d", cam->csi);
++	else
++		sprintf(cam->self->name, "mxc_v4l2_cap%d", cam->csi + 2);
+ 	cam->self->type = v4l2_int_type_master;
+ 	cam->self->u.master = &mxc_v4l2_master;
+ 
+@@ -3018,12 +3021,19 @@ static int mxc_v4l2_master_attach(struct v4l2_int_device *slave)
+ 		return -1;
+ 	}
+ 
++	if (sdata->ipu_id != cam->ipu_id) {
++		pr_debug("%s: ipu_id doesn't match\n", __func__);
++		return -1;
++	}
++
+ 	if (sdata->csi != cam->csi) {
+ 		pr_debug("%s: csi doesn't match\n", __func__);
+ 		return -1;
+ 	}
+ 
+ 	cam->sensor = slave;
++	cam->mipi_v_channel = sdata->v_channel;
++	cam->is_mipi_cam = sdata->is_mipi;
+ 
+ 	if (cam->sensor_index < MXC_SENSOR_NUM) {
+ 		cam->all_sensors[cam->sensor_index] = slave;
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5640_mipi.c b/drivers/media/platform/mxc/capture/ov5640_mipi.c
+index 0d146b5..d7d3c34 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5640_mipi.c
++++ b/drivers/media/platform/mxc/capture/ov5640_mipi.c
+@@ -1314,7 +1314,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
+ {
+ 	struct reg_value *pModeSetting = NULL;
+ 	s32 ArySize = 0;
+-	int retval = 0;
++	int retval = 0, lanes;
+ 	void *mipi_csi2_info;
+ 	u32 mipi_reg, msec_wait4stable = 0;
+ 	enum ov5640_downsize_mode dn_mode, orig_dn_mode;
+@@ -1342,16 +1342,16 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
+ 		return -1;
+ 	}
+ 
+-	mipi_csi2_set_lanes(mipi_csi2_info);
++	lanes = mipi_csi2_set_lanes(mipi_csi2_info);
+ 
+ 	/*Only reset MIPI CSI2 HW at sensor initialize*/
+ 	if (mode == ov5640_mode_INIT)
+-		mipi_csi2_reset(mipi_csi2_info);
++		mipi_csi2_reset(mipi_csi2_info, 1536 / (lanes + 1));  //Total data rate / lane numbers, Pixel clock 96MHz * 16 bits per pixel = 1536 Mbps.
+ 
+ 	if (ov5640_data.pix.pixelformat == V4L2_PIX_FMT_UYVY)
+-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_YUV422);
++		mipi_csi2_set_datatype(mipi_csi2_info, ov5640_data.v_channel, MIPI_DT_YUV422);
+ 	else if (ov5640_data.pix.pixelformat == V4L2_PIX_FMT_RGB565)
+-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_RGB565);
++		mipi_csi2_set_datatype(mipi_csi2_info, ov5640_data.v_channel, MIPI_DT_RGB565);
+ 	else
+ 		pr_err("currently this sensor format can not be supported!\n");
+ 
+@@ -1387,7 +1387,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
+ 	OV5640_set_AE_target(AE_Target);
+ 	OV5640_get_light_freq();
+ 	OV5640_set_bandingfilter();
+-	ov5640_set_virtual_channel(ov5640_data.csi);
++	ov5640_set_virtual_channel(ov5640_data.v_channel);
+ 
+ 	/* add delay to wait for sensor stable */
+ 	if (mode == ov5640_mode_QSXGA_2592_1944) {
+@@ -1410,7 +1410,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
+ 
+ 		/* wait for mipi sensor ready */
+ 		mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
+-		while ((mipi_reg == 0x200) && (i < 10)) {
++		while (((mipi_reg & 0x700) != 0x300) && (i < 10)) {
+ 			mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
+ 			i++;
+ 			msleep(10);
+@@ -2028,6 +2028,12 @@ static int ov5640_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "ipu_id",
++					&(ov5640_data.ipu_id));
++	if (retval) {
++		ov5640_data.ipu_id = 0;
++	}
++
+ 	retval = of_property_read_u32(dev->of_node, "csi_id",
+ 					&(ov5640_data.csi));
+ 	if (retval) {
+@@ -2035,6 +2041,13 @@ static int ov5640_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "v_channel_id",
++					&(ov5640_data.v_channel));
++	if (retval) {
++		dev_err(dev, "virtual channel id missing or invalid\n");
++		return retval;
++	}
++
+ 	clk_prepare_enable(ov5640_data.sensor_clk);
+ 
+ 	ov5640_data.io_init = ov5640_reset;
+@@ -2047,7 +2060,8 @@ static int ov5640_probe(struct i2c_client *client,
+ 	ov5640_data.streamcap.capturemode = 0;
+ 	ov5640_data.streamcap.timeperframe.denominator = DEFAULT_FPS;
+ 	ov5640_data.streamcap.timeperframe.numerator = 1;
+-
++	ov5640_data.is_mipi = 1;
++	
+ 	ov5640_power_on(dev);
+ 
+ 	ov5640_reset();
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5640.c b/drivers/media/platform/mxc/capture/ov5640.c
+index ec8b809..9f9d99a 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5640.c
++++ b/drivers/media/platform/mxc/capture/ov5640.c
+@@ -1869,6 +1869,12 @@ static int ov5640_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "ipu_id",
++					&(ov5640_data.ipu_id));
++	if (retval) {
++		ov5640_data.ipu_id = 0;
++	}
++
+ 	retval = of_property_read_u32(dev->of_node, "csi_id",
+ 					&(ov5640_data.csi));
+ 	if (retval) {
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5642.c b/drivers/media/platform/mxc/capture/ov5642.c
+index be61222..a3eb042 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5642.c
++++ b/drivers/media/platform/mxc/capture/ov5642.c
+@@ -4138,6 +4138,12 @@ static int ov5642_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "ipu_id",
++					&(ov5642_data.ipu_id));
++	if (retval) {
++		ov5642_data.ipu_id = 0;
++	}
++
+ 	retval = of_property_read_u32(dev->of_node, "csi_id",
+ 					&(ov5642_data.csi));
+ 	if (retval) {
+diff --git a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5645_mipi.c b/drivers/media/platform/mxc/capture/ov5645_mipi.c
+index 5a5b246..a9ff0ab 100644
+--- a/wandboard_imx_4.9/drivers/media/platform/mxc/capture/ov5645_mipi.c
++++ b/drivers/media/platform/mxc/capture/ov5645_mipi.c
+@@ -1314,7 +1314,7 @@ static int ov5645_init_mode(enum ov5645_frame_rate frame_rate,
+ {
+ 	struct reg_value *pModeSetting = NULL;
+ 	s32 ArySize = 0;
+-	int retval = 0;
++	int retval = 0, lanes;
+ 	void *mipi_csi2_info;
+ 	u32 mipi_reg, msec_wait4stable = 0;
+ 	enum ov5645_downsize_mode dn_mode, orig_dn_mode;
+@@ -1342,16 +1342,16 @@ static int ov5645_init_mode(enum ov5645_frame_rate frame_rate,
+ 		return -1;
+ 	}
+ 
+-	mipi_csi2_set_lanes(mipi_csi2_info);
++	lanes = mipi_csi2_set_lanes(mipi_csi2_info);
+ 
+ 	/*Only reset MIPI CSI2 HW at sensor initialize*/
+ 	if (mode == ov5645_mode_INIT)
+-		mipi_csi2_reset(mipi_csi2_info);
++		mipi_csi2_reset(mipi_csi2_info, 1536 / (lanes + 1));  //Total data rate / lane numbers, Pixel clock 96MHz * 16 bits per pixel = 1536 Mbps.
+ 
+ 	if (ov5645_data.pix.pixelformat == V4L2_PIX_FMT_UYVY)
+-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_YUV422);
++		mipi_csi2_set_datatype(mipi_csi2_info, ov5645_data.v_channel, MIPI_DT_YUV422);
+ 	else if (ov5645_data.pix.pixelformat == V4L2_PIX_FMT_RGB565)
+-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_RGB565);
++		mipi_csi2_set_datatype(mipi_csi2_info, ov5645_data.v_channel, MIPI_DT_RGB565);
+ 	else
+ 		pr_err("currently this sensor format can not be supported!\n");
+ 
+@@ -1387,7 +1387,7 @@ static int ov5645_init_mode(enum ov5645_frame_rate frame_rate,
+ 	OV5645_set_AE_target(AE_Target);
+ 	OV5645_get_light_freq();
+ 	OV5645_set_bandingfilter();
+-	ov5645_set_virtual_channel(ov5645_data.csi);
++	ov5645_set_virtual_channel(ov5645_data.v_channel);
+ 
+ 	/* add delay to wait for sensor stable */
+ 	if (mode == ov5645_mode_QSXGA_2592_1944) {
+@@ -1410,7 +1410,7 @@ static int ov5645_init_mode(enum ov5645_frame_rate frame_rate,
+ 
+ 		/* wait for mipi sensor ready */
+ 		mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
+-		while ((mipi_reg == 0x200) && (i < 10)) {
++		while (((mipi_reg & 0x700) != 0x300) && (i < 10)) {
+ 			mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
+ 			i++;
+ 			msleep(10);
+@@ -2028,6 +2028,12 @@ static int ov5645_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "ipu_id",
++					&(ov5645_data.ipu_id));
++	if (retval) {
++		ov5645_data.ipu_id = 0;
++	}
++
+ 	retval = of_property_read_u32(dev->of_node, "csi_id",
+ 					&(ov5645_data.csi));
+ 	if (retval) {
+@@ -2035,6 +2041,13 @@ static int ov5645_probe(struct i2c_client *client,
+ 		return retval;
+ 	}
+ 
++	retval = of_property_read_u32(dev->of_node, "v_channel_id",
++					&(ov5645_data.v_channel));
++	if (retval) {
++		dev_err(dev, "virtual channel id missing or invalid\n");
++		return retval;
++	}
++
+ 	clk_prepare_enable(ov5645_data.sensor_clk);
+ 
+ 	ov5645_data.io_init = ov5645_reset;
+@@ -2047,6 +2060,7 @@ static int ov5645_probe(struct i2c_client *client,
+ 	ov5645_data.streamcap.capturemode = 0;
+ 	ov5645_data.streamcap.timeperframe.denominator = DEFAULT_FPS;
+ 	ov5645_data.streamcap.timeperframe.numerator = 1;
++	ov5645_data.is_mipi = 1;
+ 
+ 	ov5645_power_on(dev);
+ 
+diff --git a/drivers/media/platform/mxc/capture/tp2854_mipi.c b/drivers/media/platform/mxc/capture/tp2854_mipi.c
+new file mode 100644
+index 0000000..8306586
+--- /dev/null
++++ b/drivers/media/platform/mxc/capture/tp2854_mipi.c
+@@ -0,0 +1,819 @@
++/*
++ * Copyright (C) 2017 NXP Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/slab.h>
++#include <linux/ctype.h>
++#include <linux/types.h>
++#include <linux/delay.h>
++#include <linux/clk.h>
++#include <linux/of_device.h>
++#include <linux/i2c.h>
++#include <linux/of_gpio.h>
++#include <linux/pinctrl/consumer.h>
++#include <linux/regulator/consumer.h>
++#include <linux/fsl_devices.h>
++#include <linux/mipi_csi2.h>
++#include <media/v4l2-chip-ident.h>
++#include "v4l2-int-device.h"
++#include "mxc_v4l2_capture.h"
++
++#define MAX_SENSOR_NUM	4
++
++unsigned int g_tp2854_width = 1280;
++unsigned int g_tp2854_height = 720;
++
++unsigned int g_sensor_num = 4;
++
++/*!
++ * Maintains the information on the current state of the sesor.
++ */
++static struct sensor_data tp2854_data[MAX_SENSOR_NUM];
++
++static int tp2854_probe(struct i2c_client *adapter,
++				const struct i2c_device_id *device_id);
++static int tp2854_remove(struct i2c_client *client);
++
++static int ioctl_dev_init(struct v4l2_int_device *s);
++
++static const struct i2c_device_id tp2854_id[] = {
++	{"tp2854_mipi", 0},
++	{},
++};
++
++MODULE_DEVICE_TABLE(i2c, tp2854_id);
++
++static struct i2c_driver tp2854_i2c_driver = {
++	.driver = {
++		  .owner = THIS_MODULE,
++		  .name  = "tp2854_mipi",
++		  },
++	.probe  = tp2854_probe,
++	.remove = tp2854_remove,
++	.id_table = tp2854_id,
++};
++
++/*! Read one register from a TP2854 i2c slave device.
++ *
++ *  @param *reg		register in the device we wish to access.
++ *
++ *  @return		       0 if success, an error code otherwise.
++ */
++static inline int tp2854_read_reg(u8 reg)
++{
++	int val;
++
++	val = i2c_smbus_read_byte_data(tp2854_data[0].i2c_client, reg);
++	if (val < 0) {
++		dev_info(&tp2854_data[0].i2c_client->dev,
++			"%s:read reg error: reg=%2x\n", __func__, reg);
++		return -1;
++	}
++	return val;
++}
++
++/*! Write one register of a TP2854 i2c slave device.
++ *
++ *  @param *reg		register in the device we wish to access.
++ *
++ *  @return		       0 if success, an error code otherwise.
++ */
++static int tp2854_write_reg(u8 reg, u8 val)
++{
++	s32 ret;
++
++	ret = i2c_smbus_write_byte_data(tp2854_data[0].i2c_client, reg, val);
++	if (ret < 0) {
++		dev_info(&tp2854_data[0].i2c_client->dev,
++			"%s:write reg error:reg=%2x,val=%2x\n", __func__,
++			reg, val);
++		return -1;
++	}
++	return 0;
++}
++/*
++static void tp2854_dump_registers(void)
++{
++	unsigned char i;
++	for (i=0; i<0x72; i++)
++		printk("TP2854 Reg 0x%02x = 0x%x.\r\n", i, tp2854_read_reg(i));
++}
++*/
++static int tp2854_hardware_init(struct sensor_data *sensor)
++{
++	int retval = 0;
++	void *mipi_csi2_info;
++	u32 mipi_reg;
++	int i, lanes;
++
++	pr_info("tp2854_mipi: sensor number = %d.\n", g_sensor_num);
++
++	if (g_sensor_num == 0) {
++		pr_err("%s: no camera connected.\n", __func__);
++		return -1;
++	}
++
++	tp2854_write_reg(0x40, 0x04);
++	tp2854_write_reg(0x02, 0xc2);
++	tp2854_write_reg(0x1c, 0x06);  //1280*720, 30fps
++	tp2854_write_reg(0x1d, 0x72);  //1280*720, 30fps
++//	tp2854_write_reg(0x1c, 0x07);  //1280*720, 25fps
++//	tp2854_write_reg(0x1d, 0xbc);  //1280*720, 25fps
++	tp2854_write_reg(0x4e, 0x00);
++	tp2854_write_reg(0xf5, 0xf0);
++
++	tp2854_write_reg(0x2a, 0x34);
++
++	tp2854_write_reg(0x40, 0x0c);
++	tp2854_write_reg(0x01, 0xf8);
++	tp2854_write_reg(0x02, 0x01);
++	tp2854_write_reg(0x08, 0x0f);
++	tp2854_write_reg(0x13, 0x24);
++	tp2854_write_reg(0x14, 0x04);
++	tp2854_write_reg(0x15, 0x00);
++	tp2854_write_reg(0x20, 0x44);
++	tp2854_write_reg(0x34, 0x1b);
++
++	/* Disable MIPI CSI2 output */
++	tp2854_write_reg(0x23, 0x02);
++
++	mipi_csi2_info = mipi_csi2_get_info();
++
++	/* initial mipi dphy */
++	if (!mipi_csi2_info) {
++		printk(KERN_ERR "%s() in %s: Fail to get s_mipi_csi2_info!\n",
++		       __func__, __FILE__);
++		return -1;
++	}
++
++	if (!mipi_csi2_get_status(mipi_csi2_info))
++		mipi_csi2_enable(mipi_csi2_info);
++
++	if (!mipi_csi2_get_status(mipi_csi2_info)) {
++		pr_err("Can not enable mipi csi2 driver!\n");
++		return -1;
++	}
++
++	lanes = mipi_csi2_set_lanes(mipi_csi2_info);
++
++	/* Only reset MIPI CSI2 HW at sensor initialize */
++	/* 37.125MHz pixel clock (1280*720@30fps) * 16 bits per pixel (YUV422) = 594Mbps mipi data rate for each camera */
++	mipi_csi2_reset(mipi_csi2_info, (594 * g_sensor_num) / (lanes + 1));
++
++	if (sensor->pix.pixelformat == V4L2_PIX_FMT_UYVY) {
++		for (i=0; i<MAX_SENSOR_NUM; i++)
++			mipi_csi2_set_datatype(mipi_csi2_info, i, MIPI_DT_YUV422);
++	} else
++		pr_err("currently this sensor format can not be supported!\n");
++
++/*
++	printk("Dump TP2854 registers:\r\n");
++	tp2854_dump_registers();
++*/
++
++	/* Enable MIPI CSI2 output */
++	tp2854_write_reg(0x23, 0x00);
++	msleep(100);
++
++	if (mipi_csi2_info) {
++		i = 0;
++
++		/* wait for mipi sensor ready */
++		mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
++		while (((mipi_reg & 0x700) != 0x300) && (i < 10)) {
++//		while (((mipi_reg & 0x700) != 0x300) && (i < 10000)) {
++			mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
++			i++;
++			msleep(50);
++		}
++
++		if (i >= 10) {
++//		if (i >= 10000) {
++			pr_err("mipi csi2 can not receive sensor clk! MIPI_CSI_PHY_STATE = 0x%x.\n", mipi_reg);
++			return -1;
++		}
++
++		i = 0;
++
++		/* wait for mipi stable */
++		mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
++		while ((mipi_reg != 0x0) && (i < 10)) {
++			mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
++			i++;
++			msleep(10);
++		}
++
++		if (i >= 10) {
++			pr_err("mipi csi2 can not reveive data correctly! MIPI_CSI_ERR1 = 0x%x.\n", mipi_reg);
++			return -1;
++		}
++	}
++
++	return retval;
++}
++
++/* --------------- IOCTL functions from v4l2_int_ioctl_desc --------------- */
++
++static int ioctl_g_ifparm(struct v4l2_int_device *s, struct v4l2_ifparm *p)
++{
++	struct sensor_data *sensor;
++
++	if (s == NULL) {
++		pr_err("   ERROR!! no slave device set!\n");
++		return -1;
++	}
++	sensor = s->priv;
++
++	memset(p, 0, sizeof(*p));
++	p->u.bt656.clock_curr = sensor->mclk;
++	pr_debug("   clock_curr=mclk=%d\n", sensor->mclk);
++	p->if_type = V4L2_IF_TYPE_BT656;
++	p->u.bt656.mode = V4L2_IF_TYPE_BT656_MODE_NOBT_8BIT;
++	p->u.bt656.bt_sync_correct = 1;  /* Indicate external vsync */
++
++	return 0;
++}
++
++/*!
++ * ioctl_s_power - V4L2 sensor interface handler for VIDIOC_S_POWER ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @on: indicates power mode (on or off)
++ *
++ * Turns the power on or off, depending on the value of on and returns the
++ * appropriate error code.
++ */
++static int ioctl_s_power(struct v4l2_int_device *s, int on)
++{
++	struct sensor_data *sensor = s->priv;
++
++	sensor->on = on;
++
++	return 0;
++}
++
++/*!
++ * ioctl_g_parm - V4L2 sensor interface handler for VIDIOC_G_PARM ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @a: pointer to standard V4L2 VIDIOC_G_PARM ioctl structure
++ *
++ * Returns the sensor's video CAPTURE parameters.
++ */
++static int ioctl_g_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
++{
++	struct sensor_data *sensor = s->priv;
++	struct v4l2_captureparm *cparm = &a->parm.capture;
++	int ret = 0;
++
++	switch (a->type) {
++	/* This is the only case currently handled. */
++	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
++		memset(a, 0, sizeof(*a));
++		a->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
++		cparm->capability = sensor->streamcap.capability;
++		cparm->timeperframe = sensor->streamcap.timeperframe;
++		cparm->capturemode = sensor->streamcap.capturemode;
++		ret = 0;
++		break;
++
++	/* These are all the possible cases. */
++	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
++	case V4L2_BUF_TYPE_VIDEO_OVERLAY:
++	case V4L2_BUF_TYPE_VBI_CAPTURE:
++	case V4L2_BUF_TYPE_VBI_OUTPUT:
++	case V4L2_BUF_TYPE_SLICED_VBI_CAPTURE:
++	case V4L2_BUF_TYPE_SLICED_VBI_OUTPUT:
++		ret = -EINVAL;
++		break;
++
++	default:
++		pr_debug("   type is unknown - %d\n", a->type);
++		ret = -EINVAL;
++		break;
++	}
++
++	return ret;
++}
++
++/*!
++ * ioctl_s_parm - V4L2 sensor interface handler for VIDIOC_S_PARM ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @a: pointer to standard V4L2 VIDIOC_S_PARM ioctl structure
++ *
++ * Configures the sensor to use the input parameters, if possible.  If
++ * not possible, reverts to the old parameters and returns the
++ * appropriate error code.
++ */
++static int ioctl_s_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
++{
++	int ret = 0;
++
++	switch (a->type) {
++	/* This is the only case currently handled. */
++	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
++		break;
++
++	/* These are all the possible cases. */
++	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
++	case V4L2_BUF_TYPE_VIDEO_OVERLAY:
++	case V4L2_BUF_TYPE_VBI_CAPTURE:
++	case V4L2_BUF_TYPE_VBI_OUTPUT:
++	case V4L2_BUF_TYPE_SLICED_VBI_CAPTURE:
++	case V4L2_BUF_TYPE_SLICED_VBI_OUTPUT:
++		pr_debug("   type is not " \
++			"V4L2_BUF_TYPE_VIDEO_CAPTURE but %d\n",
++			a->type);
++		ret = -EINVAL;
++		break;
++
++	default:
++		pr_debug("   type is unknown - %d\n", a->type);
++		ret = -EINVAL;
++		break;
++	}
++
++	return ret;
++}
++
++/*!
++ * ioctl_g_fmt_cap - V4L2 sensor interface handler for ioctl_g_fmt_cap
++ * @s: pointer to standard V4L2 device structure
++ * @f: pointer to standard V4L2 v4l2_format structure
++ *
++ * Returns the sensor's current pixel format in the v4l2_format
++ * parameter.
++ */
++static int ioctl_g_fmt_cap(struct v4l2_int_device *s, struct v4l2_format *f)
++{
++	struct sensor_data *sensor = s->priv;
++
++	f->fmt.pix = sensor->pix;
++
++	return 0;
++}
++
++static int ioctl_try_fmt_cap(struct v4l2_int_device *s, struct v4l2_format *f)
++{
++	struct sensor_data *sensor = s->priv;
++
++	if (sensor->i2c_client != NULL) {
++		g_tp2854_width =  f->fmt.pix.width;
++		g_tp2854_height =  f->fmt.pix.height;
++	}
++	sensor->pix.width = g_tp2854_width;
++	sensor->pix.height = g_tp2854_height;
++
++	ioctl_dev_init(s);
++	return 0;
++}
++
++/*!
++ * ioctl_g_ctrl - V4L2 sensor interface handler for VIDIOC_G_CTRL ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @vc: standard V4L2 VIDIOC_G_CTRL ioctl structure
++ *
++ * If the requested control is supported, returns the control's current
++ * value from the video_control[] array.  Otherwise, returns -EINVAL
++ * if the control is not supported.
++ */
++static int ioctl_g_ctrl(struct v4l2_int_device *s, struct v4l2_control *vc)
++{
++	int ret = 0;
++
++	ret = -EINVAL;
++
++	return ret;
++}
++
++/*!
++ * ioctl_s_ctrl - V4L2 sensor interface handler for VIDIOC_S_CTRL ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @vc: standard V4L2 VIDIOC_S_CTRL ioctl structure
++ *
++ * If the requested control is supported, sets the control's current
++ * value in HW (and updates the video_control[] array).  Otherwise,
++ * returns -EINVAL if the control is not supported.
++ */
++static int ioctl_s_ctrl(struct v4l2_int_device *s, struct v4l2_control *vc)
++{
++	int ret = 0;
++	return ret;
++}
++
++/*!
++ * ioctl_enum_framesizes - V4L2 sensor interface handler for
++ *			   VIDIOC_ENUM_FRAMESIZES ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @fsize: standard V4L2 VIDIOC_ENUM_FRAMESIZES ioctl structure
++ *
++ * Return 0 if successful, otherwise -EINVAL.
++ */
++static int ioctl_enum_framesizes(struct v4l2_int_device *s,
++				 struct v4l2_frmsizeenum *fsize)
++{
++	struct sensor_data *sensor = s->priv;
++
++	if (fsize->index > 0)
++		return -EINVAL;
++
++	fsize->pixel_format = sensor->pix.pixelformat;
++	fsize->discrete.width = sensor->pix.width;
++	fsize->discrete.height = sensor->pix.height;
++	return 0;
++}
++
++/*!
++ * ioctl_enum_frameintervals - V4L2 sensor interface handler for
++ *			       VIDIOC_ENUM_FRAMEINTERVALS ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @fival: standard V4L2 VIDIOC_ENUM_FRAMEINTERVALS ioctl structure
++ *
++ * Return 0 if successful, otherwise -EINVAL.
++ */
++static int ioctl_enum_frameintervals(struct v4l2_int_device *s,
++					 struct v4l2_frmivalenum *fival)
++{
++	if (fival->index > 0)
++		return -EINVAL;
++
++	if (fival->pixel_format == 0 || fival->width == 0 ||
++			fival->height == 0) {
++		pr_warning("Please assign pixelformat, width and height.\n");
++		return -EINVAL;
++	}
++
++	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
++	fival->discrete.numerator = 1;
++	fival->discrete.denominator = 30;
++
++	return 0;
++}
++
++/*!
++ * ioctl_g_chip_ident - V4L2 sensor interface handler for
++ *			VIDIOC_DBG_G_CHIP_IDENT ioctl
++ * @s: pointer to standard V4L2 device structure
++ * @id: pointer to int
++ *
++ * Return 0.
++ */
++static int ioctl_g_chip_ident(struct v4l2_int_device *s, int *id)
++{
++	((struct v4l2_dbg_chip_ident *)id)->match.type =
++					V4L2_CHIP_MATCH_I2C_DRIVER;
++	strcpy(((struct v4l2_dbg_chip_ident *)id)->match.name,
++		"ovtp2854_mipi_deseiralizer");
++
++	return 0;
++}
++
++/*!
++ * ioctl_init - V4L2 sensor interface handler for VIDIOC_INT_INIT
++ * @s: pointer to standard V4L2 device structure
++ */
++static int ioctl_init(struct v4l2_int_device *s)
++{
++	return 0;
++}
++
++/*!
++ * ioctl_enum_fmt_cap - V4L2 sensor interface handler for VIDIOC_ENUM_FMT
++ * @s: pointer to standard V4L2 device structure
++ * @fmt: pointer to standard V4L2 fmt description structure
++ *
++ * Return 0.
++ */
++static int ioctl_enum_fmt_cap(struct v4l2_int_device *s,
++			      struct v4l2_fmtdesc *fmt)
++{
++	struct sensor_data *sensor = s->priv;
++
++	if (fmt->index > 0) /* only 1 pixelformat support so far */
++		return -EINVAL;
++
++	fmt->pixelformat = sensor->pix.pixelformat;
++
++	return 0;
++}
++
++/*!
++ * ioctl_dev_init - V4L2 sensor interface handler for vidioc_int_dev_init_num
++ * @s: pointer to standard V4L2 device structure
++ *
++ * Initialise the device when slave attaches to the master.
++ */
++static int ioctl_dev_init(struct v4l2_int_device *s)
++{
++	struct sensor_data *sensor = s->priv;
++	int ret = 0;
++	void *mipi_csi2_info;
++
++	sensor->on = true;
++
++	if (sensor->i2c_client != NULL) {
++		mipi_csi2_info = mipi_csi2_get_info();
++
++		/* enable mipi csi2 */
++		if (mipi_csi2_info)
++			mipi_csi2_enable(mipi_csi2_info);
++		else {
++			printk(KERN_ERR "%s() in %s: Fail to get mipi_csi2_info!\n",
++			       __func__, __FILE__);
++			return -EPERM;
++		}
++
++		//ret = tp2854_hardware_init(sensor);
++		tp2854_hardware_init(sensor);
++	}
++
++	return ret;
++}
++
++/*!
++ * ioctl_dev_exit - V4L2 sensor interface handler for vidioc_int_dev_exit_num
++ * @s: pointer to standard V4L2 device structure
++ *
++ * Delinitialise the device when slave detaches to the master.
++ */
++static int ioctl_dev_exit(struct v4l2_int_device *s)
++{
++	struct sensor_data *sensor = s->priv;
++	void *mipi_csi2_info;
++
++	if (sensor->i2c_client != NULL) {
++		mipi_csi2_info = mipi_csi2_get_info();
++
++		/* disable mipi csi2 */
++		if (mipi_csi2_info)
++			if (mipi_csi2_get_status(mipi_csi2_info))
++				mipi_csi2_disable(mipi_csi2_info);
++	}
++
++	return 0;
++}
++
++/*!
++ * This structure defines all the ioctls for this module and links them to the
++ * enumeration.
++ */
++static struct v4l2_int_ioctl_desc tp2854_ioctl_desc[] = {
++	{vidioc_int_dev_init_num, (v4l2_int_ioctl_func *) ioctl_dev_init},
++	{vidioc_int_dev_exit_num, ioctl_dev_exit},
++	{vidioc_int_s_power_num, (v4l2_int_ioctl_func *) ioctl_s_power},
++	{vidioc_int_g_ifparm_num, (v4l2_int_ioctl_func *) ioctl_g_ifparm},
++/*	{vidioc_int_g_needs_reset_num,
++				(v4l2_int_ioctl_func *)ioctl_g_needs_reset}, */
++/*	{vidioc_int_reset_num, (v4l2_int_ioctl_func *)ioctl_reset}, */
++	{vidioc_int_init_num, (v4l2_int_ioctl_func *) ioctl_init},
++	{vidioc_int_enum_fmt_cap_num,
++				(v4l2_int_ioctl_func *) ioctl_enum_fmt_cap},
++	{vidioc_int_try_fmt_cap_num,
++				(v4l2_int_ioctl_func *)ioctl_try_fmt_cap},
++	{vidioc_int_g_fmt_cap_num, (v4l2_int_ioctl_func *) ioctl_g_fmt_cap},
++/*	{vidioc_int_s_fmt_cap_num, (v4l2_int_ioctl_func *) ioctl_s_fmt_cap}, */
++	{vidioc_int_g_parm_num, (v4l2_int_ioctl_func *) ioctl_g_parm},
++	{vidioc_int_s_parm_num, (v4l2_int_ioctl_func *) ioctl_s_parm},
++/*	{vidioc_int_queryctrl_num, (v4l2_int_ioctl_func *)ioctl_queryctrl}, */
++	{vidioc_int_g_ctrl_num, (v4l2_int_ioctl_func *) ioctl_g_ctrl},
++	{vidioc_int_s_ctrl_num, (v4l2_int_ioctl_func *) ioctl_s_ctrl},
++	{vidioc_int_enum_framesizes_num,
++				(v4l2_int_ioctl_func *) ioctl_enum_framesizes},
++	{vidioc_int_enum_frameintervals_num,
++				(v4l2_int_ioctl_func *) ioctl_enum_frameintervals},
++	{vidioc_int_g_chip_ident_num,
++				(v4l2_int_ioctl_func *) ioctl_g_chip_ident},
++};
++
++static struct v4l2_int_slave tp2854_slave[MAX_SENSOR_NUM] = {
++	{
++	.ioctls = tp2854_ioctl_desc,
++	.num_ioctls = ARRAY_SIZE(tp2854_ioctl_desc),
++	},
++
++	{
++	.ioctls = tp2854_ioctl_desc,
++	.num_ioctls = ARRAY_SIZE(tp2854_ioctl_desc),
++	},
++
++	{
++	.ioctls = tp2854_ioctl_desc,
++	.num_ioctls = ARRAY_SIZE(tp2854_ioctl_desc),
++	},
++
++	{
++	.ioctls = tp2854_ioctl_desc,
++	.num_ioctls = ARRAY_SIZE(tp2854_ioctl_desc),
++	}
++};
++
++static struct v4l2_int_device tp2854_int_device[MAX_SENSOR_NUM] = {
++	{
++		.module = THIS_MODULE,
++		.name = "tp2854",
++		.type = v4l2_int_type_slave,
++		.u = {
++			.slave = &tp2854_slave[0],
++		},
++	}, 
++
++	{
++		.module = THIS_MODULE,
++		.name = "tp2854",
++		.type = v4l2_int_type_slave,
++		.u = {
++			.slave = &tp2854_slave[1],
++		},
++	}, 
++
++	{
++		.module = THIS_MODULE,
++		.name = "tp2854",
++		.type = v4l2_int_type_slave,
++		.u = {
++			.slave = &tp2854_slave[2],
++		},
++	}, 
++
++	{
++		.module = THIS_MODULE,
++		.name = "tp2854",
++		.type = v4l2_int_type_slave,
++		.u = {
++			.slave = &tp2854_slave[3],
++		},
++	}
++};
++
++/*!
++ * tp2854 I2C probe function
++ *
++ * @param adapter            struct i2c_adapter *
++ * @return  Error code indicating success or failure
++ */
++static int tp2854_probe(struct i2c_client *client,
++			const struct i2c_device_id *id)
++{
++	struct device *dev = &client->dev;
++	int retval;
++
++	/* Set initial values for the sensor struct. */
++	memset(&tp2854_data[0], 0, sizeof(tp2854_data[0]));
++	tp2854_data[0].sensor_clk = devm_clk_get(dev, "csi_mclk");
++	if (IS_ERR(tp2854_data[0].sensor_clk)) {
++		/* assuming clock enabled by default */
++		tp2854_data[0].sensor_clk = NULL;
++		dev_err(dev, "clock-frequency missing or invalid\n");
++		return PTR_ERR(tp2854_data[0].sensor_clk);
++	}
++
++	retval = of_property_read_u32(dev->of_node, "mclk",
++					&(tp2854_data[0].mclk));
++	if (retval) {
++		dev_err(dev, "mclk missing or invalid\n");
++		return retval;
++	}
++
++	retval = of_property_read_u32(dev->of_node, "mclk_source",
++					(u32 *) &(tp2854_data[0].mclk_source));
++	if (retval) {
++		dev_err(dev, "mclk_source missing or invalid\n");
++		return retval;
++	}
++
++	retval = of_property_read_u32(dev->of_node, "csi_id",
++					&(tp2854_data[0].csi));
++	if (retval) {
++		dev_err(dev, "csi id missing or invalid\n");
++		return retval;
++	}
++
++	clk_prepare_enable(tp2854_data[0].sensor_clk);
++
++	tp2854_data[0].i2c_client = client;
++	tp2854_data[0].pix.pixelformat = V4L2_PIX_FMT_UYVY;
++	tp2854_data[0].pix.width = g_tp2854_width;
++	tp2854_data[0].pix.height = g_tp2854_height;
++	tp2854_data[0].streamcap.capturemode = 0;
++	tp2854_data[0].streamcap.timeperframe.denominator = 30;
++	tp2854_data[0].streamcap.timeperframe.numerator = 1;
++	tp2854_data[0].is_mipi = 1;
++
++	retval = tp2854_read_reg(0xfe);
++	printk("REG[0xFE] = 0x%x.\r\n", retval);
++	retval = tp2854_read_reg(0xff);
++	printk("REG[0xFF] = 0x%x.\r\n", retval);
++/*
++	retval = tp2854_read_reg(0x1e);
++	if (retval != 0x40) {
++		pr_warning("tp2854 is not found, chip id reg 0x1e = 0x%x.\n", retval);
++		clk_disable_unprepare(tp2854_data[0].sensor_clk);
++		return -ENODEV;
++	}
++*/
++	memcpy(&tp2854_data[1], &tp2854_data[0], sizeof(struct sensor_data));
++	memcpy(&tp2854_data[2], &tp2854_data[0], sizeof(struct sensor_data));
++	memcpy(&tp2854_data[3], &tp2854_data[0], sizeof(struct sensor_data));
++
++	tp2854_data[1].i2c_client = NULL;
++	tp2854_data[2].i2c_client = NULL;
++	tp2854_data[3].i2c_client = NULL;
++
++	tp2854_data[0].ipu_id = 0;
++	tp2854_data[0].csi = 0;
++	tp2854_data[0].v_channel = 0;
++
++	tp2854_data[1].ipu_id = 0;
++	tp2854_data[1].csi = 1;
++	tp2854_data[1].v_channel = 1;
++
++	tp2854_data[2].ipu_id = 1;
++	tp2854_data[2].csi = 0;
++	tp2854_data[2].v_channel = 2;
++
++	tp2854_data[3].ipu_id = 1;
++	tp2854_data[3].csi = 1;
++	tp2854_data[3].v_channel = 3;
++
++	tp2854_int_device[0].priv = &tp2854_data[0];
++	tp2854_int_device[1].priv = &tp2854_data[1];
++	tp2854_int_device[2].priv = &tp2854_data[2];
++	tp2854_int_device[3].priv = &tp2854_data[3];
++	v4l2_int_device_register(&tp2854_int_device[0]);
++	v4l2_int_device_register(&tp2854_int_device[1]);
++	v4l2_int_device_register(&tp2854_int_device[2]);
++	retval = v4l2_int_device_register(&tp2854_int_device[3]);
++
++	clk_disable_unprepare(tp2854_data[0].sensor_clk);
++
++	pr_info("tp2854_mipi is found\n");
++	return retval;
++}
++
++/*!
++ * tp2854 I2C detach function
++ *
++ * @param client            struct i2c_client *
++ * @return  Error code indicating success or failure
++ */
++static int tp2854_remove(struct i2c_client *client)
++{
++	v4l2_int_device_unregister(&tp2854_int_device[3]);
++	v4l2_int_device_unregister(&tp2854_int_device[2]);
++	v4l2_int_device_unregister(&tp2854_int_device[1]);
++	v4l2_int_device_unregister(&tp2854_int_device[0]);
++
++	return 0;
++}
++
++/*!
++ * tp2854 init function
++ *
++ * @return  Error code indicating success or failure
++ */
++static __init int tp2854_init(void)
++{
++	u8 err;
++
++	err = i2c_add_driver(&tp2854_i2c_driver);
++	if (err != 0)
++		pr_err("%s:driver registration failed, error=%d\n",
++			__func__, err);
++
++	return err;
++}
++
++/*!
++ * TP2854 cleanup function
++ *
++ * @return  Error code indicating success or failure
++ */
++static void __exit tp2854_clean(void)
++{
++	i2c_del_driver(&tp2854_i2c_driver);
++}
++
++module_init(tp2854_init);
++module_exit(tp2854_clean);
++
++MODULE_AUTHOR("NXP Semiconductor, Inc.");
++MODULE_DESCRIPTION("TP2854 HD CVBS Encoder Driver");
++MODULE_LICENSE("GPL");
++MODULE_VERSION("1.0");
++MODULE_ALIAS("CSI");
+\ No newline at end of file
